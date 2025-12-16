@@ -22,42 +22,33 @@ class GetImage {
 
   async get(url1, url2) {
     try {
-      url1 = this.isValidURL(url1) ? url1 : null;
-      url2 = this.isValidURL(url2) ? url2 : null;
-      if (!url1 && !url2) {
-        throw new Error("No Image");
-      }
       const { getExternal } = RichPresence;
-      const images = await getExternal(
-        this.client,
-        "1109522937989562409",
-        url1,
-        url2
-      );
-      if (images.length === 1) {
-        const { url, external_asset_path } = images[0];
-        if (url === url1) {
-          url1 = url.includes("attachments") ? url : external_asset_path;
-          url2 = null;
-        } else if (url === url2) {
-          url1 = null;
-          url2 = url.includes("attachments") ? url : external_asset_path;
-        }
-      } else if (images.length === 2) {
-        const [img1, img2] = images;
-        if (img1.external_asset_path) {
-          const { url, external_asset_path } = img1;
-          url1 = url.includes("attachments") ? url : external_asset_path;
-        }
-        if (img2.external_asset_path) {
-          const { url, external_asset_path } = img2;
-          url2 = url.includes("attachments") ? url : external_asset_path;
-        }
-      } else {
-        throw new Error("No Image");
+
+      const urls = [url1, url2].map(url => (this.isValidURL(url) ? url : null));
+      const validUrls = urls.filter(Boolean);
+
+      if (validUrls.length === 0) {
+        return { bigImage: null, smallImage: null };
       }
-      return { bigImage: url1, smallImage: url2 };
-    } catch {
+
+      const images = await getExternal(this.client, "1438613688406769778", ...validUrls);
+      let finalUrl1 = null;
+      let finalUrl2 = null;
+
+      for (const img of images) {
+        const { url, external_asset_path } = img;
+        const finalPath = url.includes("attachments") ? url : external_asset_path;
+
+        if (url === url1) finalUrl1 = finalPath;
+        if (url === url2) finalUrl2 = finalPath;
+      }
+
+      return {
+        bigImage: finalUrl1,
+        smallImage: finalUrl2,
+      };
+    } catch (error) {
+      console.error("[GetExternalImage Error]:", error);
       return { bigImage: null, smallImage: null };
     }
   }
@@ -1028,8 +1019,8 @@ class Emoji {
     return isNaN(parsedHour)
       ? "Invalid hour"
       : parsedHour >= 6 && parsedHour < 18
-      ? "☀️"
-      : "🌙";
+        ? "☀️"
+        : "🌙";
   }
 
   getClock(hour) {
@@ -1614,15 +1605,12 @@ class ModClient extends Client {
         const originalPatch = ClientUserSettingManager.prototype._patch;
         ClientUserSettingManager.prototype._patch = function (data) {
           if (!data) data = {};
-
           if (!data.friend_source_flags) {
             data.friend_source_flags = { all: false };
           }
           return originalPatch.call(this, data);
         };
-        console.log(
-          "Successfully patched ClientUserSettingManager before client creation"
-        );
+        console.log("Successfully patched ClientUserSettingManager before client creation");
       }
     } catch (error) {
       console.warn("Pre-patching attempt failed:", error.message);
@@ -1631,7 +1619,6 @@ class ModClient extends Client {
     super({
       checkUpdate: false,
       autoRedeemNitro: false,
-      proxy: config.setup?.proxy || undefined,
       captchaKey: null,
       captchaService: null,
       DMSync: false,
@@ -1652,43 +1639,87 @@ class ModClient extends Client {
           device: "Chrome",
         },
         reconnect: true,
-        intents: 0,
+        intents: 32767,
       },
       rest: {
         userAgentAppendix: "Discord-Selfbot/1.0.0",
         timeout: 30000,
-        retries: 3, 
+        retries: 3,
       },
       messageCacheMaxSize: 5,
       messageCacheLifetime: 60,
       messageSweepInterval: 120,
     });
 
+    // Parse config structure - support multiple config formats
+    const inputs = config.INPUTS || config.inputs || [{}];
+    const input = Array.isArray(inputs) ? inputs[0] : inputs;
+    const options = config.OPTIONS || config.options || config.setup || {};
+
+    // Try to get RPC config from various possible locations
+    let rpcConfig = null;
+    if (config.RPC && typeof config.RPC === 'object') {
+      rpcConfig = config.RPC;
+      console.log("Using config.RPC");
+    } else if (config.rpc && typeof config.rpc === 'object') {
+      rpcConfig = config.rpc;
+      console.log("Using config.rpc");
+    } else if (config.config && typeof config.config === 'object') {
+      rpcConfig = config.config;
+      console.log("Using config.config");
+    } else {
+      rpcConfig = config;
+      console.log("Using config directly as fallback");
+    }
+
     this.TOKEN = token;
     this.config = config;
     this.targetTime = info.wait;
+
+    // Feature flags
+    this.activityType = input.activity?.type || "STREAMING";
+
+    // RPC configuration (merged with old config structure)
+    this.rpcConfig = {
+      delay: rpcConfig?.delay || (config.setup?.delay ? config.setup.delay * 1000 : 10000),
+      timestamp: rpcConfig?.timestamp || {},
+      twitchURL: rpcConfig?.TwitchURL || rpcConfig?.twitchURL || "",
+      youtubeURL: rpcConfig?.YoutubeURL || rpcConfig?.youtubeURL || "",
+      name: rpcConfig?.name || [],
+      state: rpcConfig?.state || [],
+      details: rpcConfig?.details || [],
+      assetsLargeText: rpcConfig?.assetsLargeText || [],
+      assetsSmallText: rpcConfig?.assetsSmallText || [],
+      assetsLargeImage: rpcConfig?.assetsLargeImage || [],
+      assetsSmallImage: rpcConfig?.assetsSmallImage || [],
+      buttonFirst: rpcConfig?.buttonFirst || [],
+      buttonSecond: rpcConfig?.buttonSecond || []
+    };
+
     this.intervals = new Set();
-    this.weather = new Weather(config.setup?.city);
+    this.weather = new Weather(options.location || options.city || options.tz || "Asia/Bangkok");
     this.sys = new SystemInfo();
     this.emoji = new Emoji();
     this.textFont = new TextFont();
     this.getExternal = new GetImage(this);
     this.cacheImage = new Map();
+
     this.lib = {
       count: 0,
       countParty: 1,
       timestamp: 0,
       v: { patch: info.version },
     };
+
     this.index = {
       url: 0,
-      text_0: 0,
-      text_1: 0,
-      text_2: 0,
-      text_3: 0,
-      text_4: 0,
-      bm: 0,
-      sm: 0,
+      name: 0,
+      state: 0,
+      details: 0,
+      assetsLargeText: 0,
+      assetsSmallText: 0,
+      assetsLargeImage: 0,
+      assetsSmallImage: 0,
       bt_1: 0,
       bt_2: 0,
     };
@@ -1699,15 +1730,11 @@ class ModClient extends Client {
     this.isRunningStream = false;
 
     this.on("disconnect", () => {
-      console.log(
-        `Client disconnected for token: ${this.maskToken(this.TOKEN)}`
-      );
+      console.log(`Client disconnected for token: ${this.maskToken(this.TOKEN)}`);
     });
 
     this.on("reconnecting", () => {
-      console.log(
-        `Client reconnecting for token: ${this.maskToken(this.TOKEN)}`
-      );
+      console.log(`Client reconnecting for token: ${this.maskToken(this.TOKEN)}`);
     });
 
     this.on("resumed", () => {
@@ -1791,26 +1818,31 @@ class ModClient extends Client {
 
   async streaming() {
     if (this.isRunningStream) {
-      console.log(
-        `Streaming update is already in progress for ${this.maskToken(
-          this.TOKEN
-        )}`
-      );
+      console.log(`Streaming update is already in progress for ${this.maskToken(this.TOKEN)}`);
       return;
     }
 
     this.isRunningStream = true;
     try {
-      const { setup, config } = this.config;
-      const applicationId = config.options?.botid || "1109522937989562409";
+      if (!this.config) {
+        console.error("No config available for streaming");
+        this.isRunningStream = false;
+        return;
+      }
 
       const currentTime = Date.now();
       let connectionHasIssues = false;
 
-      if (!this.ws || this.ws.status !== 0) {
-        console.log(
-          `Client not connected (status: ${this.ws?.status || "unknown"})`
-        );
+      if (this.ws && this.ws.status === 3) {
+        console.log("Client is connecting, waiting for connection to establish...");
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+
+      if (!this.ws || (this.ws.status !== 0 && this.ws.status !== 3)) {
+        console.log(`Client not properly connected (status: ${this.ws?.status || "unknown"})`);
+        connectionHasIssues = true;
+      } else if (this.ws.status === 3) {
+        console.log("Client still connecting after wait period, treating as connection issue");
         connectionHasIssues = true;
       } else if (this.ws.ping > 5000) {
         console.log(`High ping detected: ${this.ws.ping}ms`);
@@ -1818,33 +1850,24 @@ class ModClient extends Client {
       }
 
       if (connectionHasIssues) {
-        if (
-          this.restartCount < 5 &&
-          currentTime - this.lastRestartTime > 60000
-        ) {
+        if (this.restartCount < 5 && currentTime - this.lastRestartTime > 60000) {
           this.lastRestartTime = currentTime;
           this.restartCount++;
-          console.log(
-            `Connection issues detected for ${this.maskToken(
-              this.TOKEN
-            )}, reconnection attempt #${this.restartCount}`
-          );
+          console.log(`Connection issues detected, reconnection attempt #${this.restartCount}`);
 
-          setTimeout(
-            () => this.streaming(),
-            Math.max(10000, (setup?.delay || 10) * 1000)
-          );
-          this.updateIndices(config);
+          const backoffDelay = Math.min(30000, Math.pow(2, this.restartCount) * 2500);
+          const totalDelay = Math.max(backoffDelay, 10000);
+
+          console.log(`Waiting ${totalDelay}ms before next attempt...`);
+          setTimeout(() => this.streaming(), totalDelay);
+          this.updateIndices();
           this.isRunningStream = false;
           return;
         } else if (this.restartCount >= 5) {
-          console.log(
-            `Too many reconnection attempts for ${this.maskToken(
-              this.TOKEN
-            )}, will try again later`
-          );
+          console.log(`Too many reconnection attempts, will try again in 15 minutes`);
           setTimeout(() => {
             if (Date.now() - this.lastRestartTime > 15 * 60 * 1000) {
+              console.log("Resetting restart count after cooldown");
               this.restartCount = 0;
             }
             this.streaming();
@@ -1854,88 +1877,160 @@ class ModClient extends Client {
         }
       }
 
-      let watchUrl = config.options["watch-url"]?.[this.index.url];
+      // Get streaming URL from rpcConfig
+      const watchUrls = [];
+      if (this.rpcConfig.twitchURL) watchUrls.push(this.rpcConfig.twitchURL);
+      if (this.rpcConfig.youtubeURL) watchUrls.push(this.rpcConfig.youtubeURL);
 
-      if (!watchUrl || !this.getExternal.isValidURL(watchUrl)) {
-        console.warn("No valid streaming URL found. Using fallback URL.");
-        watchUrl = "https://www.twitch.tv/4levy_z1";
+      let watchUrl = null;
+      if (watchUrls.length > 0) {
+        watchUrl = watchUrls[this.index.url % watchUrls.length];
+      }
+
+      if (this.activityType === "STREAMING") {
+        if (!watchUrl || !this.getExternal.isValidURL(watchUrl)) {
+          console.warn("No valid streaming URL found. Using fallback URL.");
+          watchUrl = "https://www.twitch.tv/4levy_z1";
+        }
       }
 
       let platform = "";
-      if (watchUrl.includes("twitch.tv")) {
-        platform = "Twitch";
-      } else if (
-        watchUrl.includes("youtube.com") ||
-        watchUrl.includes("youtu.be")
-      ) {
-        platform = "YouTube";
-      } else {
-        platform = "Unknown";
+      if (watchUrl) {
+        if (watchUrl.includes("twitch.tv")) {
+          platform = "Twitch";
+        } else if (watchUrl.includes("youtube.com") || watchUrl.includes("youtu.be")) {
+          platform = "YouTube";
+        } else if (watchUrl.includes("spotify.com")) {
+          platform = "Spotify";
+        } else {
+          platform = "Custom";
+        }
       }
 
       const presence = new RichPresence(this)
-        .setApplicationId(applicationId)
-        .setType("STREAMING")
-        .setURL(watchUrl)
-        .setName(platform);
+        .setApplicationId(this.config.config?.options?.botid || "1109522937989562409")
+        .setType(this.activityType);
 
-      const text1 = config["text-1"]?.[this.index.text_1] || null;
-      presence.setDetails(this.SPT(text1));
-
-      const text2 = config["text-2"]?.[this.index.text_2] || null;
-      presence.setState(this.SPT(text2));
-
-      const text3 = config["text-3"]?.[this.index.text_3] || null;
-      presence.setAssetsLargeText(this.SPT(text3));
-
-      if (config["text-4"]?.length) {
-        const text4 = config["text-4"][this.index.text_4];
-        presence.setAssetsSmallText(this.SPT(text4));
+      // Handle LISTENING activity type with timestamp
+      if (this.activityType === "LISTENING") {
+        if (this.rpcConfig.timestamp && this.rpcConfig.timestamp.start && this.rpcConfig.timestamp.end) {
+          const start = this.parseTimestamp(this.rpcConfig.timestamp.start);
+          const end = this.parseTimestamp(this.rpcConfig.timestamp.end);
+          if (start && end) {
+            const total = end - start;
+            const current = Date.now() % total;
+            presence.setStartTimestamp(Date.now() - current)
+              .setEndTimestamp(Date.now() + (total - current));
+          }
+        }
+      } else if (this.activityType === "STREAMING" && watchUrl) {
+        presence.setURL(watchUrl);
       }
 
-      if (config.bigimg?.length || config.smallimg?.length) {
+      const nameText = this.getNextItem(this.rpcConfig.name, 'name');
+      const details = this.getNextItem(this.rpcConfig.details, 'details');
+      let activityName;
+
+      if (this.activityType === "STREAMING" && platform) {
+        activityName = platform;
+      } else {
+        if (nameText) {
+          activityName = this.SPT(nameText);
+        } else if (this.activityType === "LISTENING" && details) {
+          activityName = this.SPT(details);
+        } else {
+          const effectivePlatform = this.activityType === "LISTENING" ? null : platform;
+          activityName = this.getDefaultActivityName(this.activityType, effectivePlatform);
+        }
+      }
+
+      presence.setName(activityName);
+
+      // Set details (the first line under the activity name)
+      if (details) {
+        presence.setDetails(this.SPT(details));
+      }
+
+      // Set state (the second line under the activity name)
+      const state = this.getNextItem(this.rpcConfig.state, 'state');
+      if (state) {
+        presence.setState(this.SPT(state));
+      }
+
+      const largeText = this.getNextItem(this.rpcConfig.assetsLargeText, 'assetsLargeText');
+      if (largeText) {
+        presence.setAssetsLargeText(this.SPT(largeText));
+      }
+
+      const smallText = this.getNextItem(this.rpcConfig.assetsSmallText, 'assetsSmallText');
+      if (smallText) {
+        presence.setAssetsSmallText(this.SPT(smallText));
+      }
+
+      const largeImage = this.getNextItem(this.rpcConfig.assetsLargeImage, 'assetsLargeImage');
+      const smallImage = this.getNextItem(this.rpcConfig.assetsSmallImage, 'assetsSmallImage');
+
+      if (largeImage || smallImage) {
         try {
-          const bigImg = config.bigimg[this.index.bm];
-          const smallImg = config.smallimg[this.index.sm];
-          const images = await this.getImage(bigImg, smallImg);
-          presence.setAssetsLargeImage(images.bigImage);
-          presence.setAssetsSmallImage(images.smallImage);
+          const images = await this.getImage(largeImage, smallImage);
+          if (images.bigImage) {
+            presence.setAssetsLargeImage(images.bigImage);
+          }
+          if (images.smallImage) {
+            presence.setAssetsSmallImage(images.smallImage);
+          }
         } catch (imgError) {
           console.warn(`Failed to set images: ${imgError.message}`);
         }
       }
 
-      if (config["button-1"]?.length) {
+      // Handle timestamp for non-LISTENING types
+      if (this.activityType !== "LISTENING" && this.rpcConfig.timestamp && (this.rpcConfig.timestamp.start || this.rpcConfig.timestamp.end)) {
+        if (this.rpcConfig.timestamp.start) {
+          const start = this.parseTimestamp(this.rpcConfig.timestamp.start);
+          if (start) presence.setStartTimestamp(start);
+        }
+        if (this.rpcConfig.timestamp.end) {
+          const end = this.parseTimestamp(this.rpcConfig.timestamp.end);
+          if (end) presence.setEndTimestamp(end);
+        }
+      }
+
+      // Add buttons with support for both label and name fields
+      if (this.rpcConfig.buttonFirst && this.rpcConfig.buttonFirst.length > 0) {
         try {
-          const button1 = config["button-1"][this.index.bt_1];
-          presence.addButton(this.SPT(button1.name), button1.url);
+          const button1 = this.rpcConfig.buttonFirst[this.index.bt_1 % this.rpcConfig.buttonFirst.length];
+          if (button1 && (button1.label || button1.name) && button1.url) {
+            presence.addButton(this.SPT(button1.label || button1.name), button1.url);
+          }
         } catch (buttonError) {
           console.warn(`Failed to add button 1: ${buttonError.message}`);
         }
       }
 
-      if (config["button-2"]?.length) {
+      if (this.rpcConfig.buttonSecond && this.rpcConfig.buttonSecond.length > 0) {
         try {
-          const button2 = config["button-2"][this.index.bt_2];
-          presence.addButton(this.SPT(button2.name), button2.url);
+          const button2 = this.rpcConfig.buttonSecond[this.index.bt_2 % this.rpcConfig.buttonSecond.length];
+          if (button2 && (button2.label || button2.name) && button2.url) {
+            presence.addButton(this.SPT(button2.label || button2.name), button2.url);
+          }
         } catch (buttonError) {
           console.warn(`Failed to add button 2: ${buttonError.message}`);
         }
       }
 
-      const status = {
-        activities: [presence],
-      };
-
       try {
-        this.user?.setPresence(status);
+        await this.user?.setPresence({
+          activities: [presence],
+          status: "online",
+        });
       } catch (presenceError) {
-        console.warn(`Failed to update presence: ${presenceError.message}`);
+        console.error(`Failed to update presence: ${presenceError.message}`);
       }
 
-      this.updateIndices(config);
+      this.updateIndices();
 
-      const nextUpdateDelay = Math.max(5000, (setup?.delay || 10) * 1000);
+      const nextUpdateDelay = Math.max(5000, this.rpcConfig.delay);
       setTimeout(() => this.streaming(), nextUpdateDelay);
     } catch (error) {
       console.error(`Error in streaming method: ${error.message}`);
@@ -1945,31 +2040,53 @@ class ModClient extends Client {
     }
   }
 
-  updateIndices(config) {
+  updateIndices() {
     this.lib.count++;
     this.lib.countParty++;
 
-    this.index.url =
-      (this.index.url + 1) %
-      Math.max(1, config.options["watch-url"]?.length || 1);
-    this.index.text_0 =
-      (this.index.text_0 + 1) % Math.max(1, config["text-1"]?.length || 1);
-    this.index.text_1 =
-      (this.index.text_1 + 1) % Math.max(1, config["text-1"]?.length || 1);
-    this.index.text_2 =
-      (this.index.text_2 + 1) % Math.max(1, config["text-2"]?.length || 1);
-    this.index.text_3 =
-      (this.index.text_3 + 1) % Math.max(1, config["text-3"]?.length || 1);
-    this.index.text_4 =
-      (this.index.text_4 + 1) % Math.max(1, config["text-4"]?.length || 1);
-    this.index.bt_1 =
-      (this.index.bt_1 + 1) % Math.max(1, config["button-1"]?.length || 1);
-    this.index.bt_2 =
-      (this.index.bt_2 + 1) % Math.max(1, config["button-2"]?.length || 1);
-    this.index.bm =
-      (this.index.bm + 1) % Math.max(1, config.bigimg?.length || 1);
-    this.index.sm =
-      (this.index.sm + 1) % Math.max(1, config.smallimg?.length || 1);
+    const urlCount = [this.rpcConfig.twitchURL, this.rpcConfig.youtubeURL].filter(Boolean).length;
+    this.index.url = (this.index.url + 1) % Math.max(1, urlCount);
+
+    this.index.bt_1 = (this.index.bt_1 + 1) % Math.max(1, this.rpcConfig.buttonFirst?.length || 1);
+    this.index.bt_2 = (this.index.bt_2 + 1) % Math.max(1, this.rpcConfig.buttonSecond?.length || 1);
+  }
+
+  getDefaultActivityName(activityType, platform) {
+    if (platform) return platform;
+
+    switch (activityType) {
+      case "STREAMING":
+        return "Streaming";
+      case "PLAYING":
+        return "Playing";
+      case "LISTENING":
+        return "Listening to";
+      case "WATCHING":
+        return "Watching";
+      case "COMPETING":
+        return "Competing in";
+      default:
+        return "Activity";
+    }
+  }
+
+  getNextItem(array, indexKey) {
+    if (!array) return null;
+    if (!Array.isArray(array)) return array;
+    if (array.length === 0) return null;
+    const item = array[this.index[indexKey] % array.length];
+    this.index[indexKey]++;
+    return item;
+  }
+
+  parseTimestamp(timestamp) {
+    if (!timestamp) return null;
+    if (typeof timestamp === 'number') return timestamp;
+    if (typeof timestamp === 'string') {
+      const date = new Date(timestamp);
+      return date.getTime();
+    }
+    return null;
   }
 
   startInterval(callback, interval) {
@@ -1991,36 +2108,36 @@ class ModClient extends Client {
 
   async getImage(bigImg, smallImg) {
     try {
-      const [bigImage, smallImage] = await Promise.all([
-        this.SPT(bigImg),
-        this.SPT(smallImg),
-      ]);
+      const processedBigImg = await this.SPT(bigImg);
+      const processedSmallImg = await this.SPT(smallImg);
 
-      const cachedBigImage = this.cacheImage.get(bigImg);
-      const cachedSmallImage = this.cacheImage.get(smallImg);
+      const cachedBigImage = this.cacheImage.get(processedBigImg);
+      const cachedSmallImage = this.cacheImage.get(processedSmallImg);
+
 
       let fetchedImages = { bigImage: null, smallImage: null };
       try {
-        fetchedImages = await this.getExternal.get(bigImage, smallImage);
+        fetchedImages = await this.getExternal.get(processedBigImg, processedSmallImg);
+
       } catch (error) {
-        console.warn(`Error fetching images: ${error.message}`);
       }
 
       const finalBigImage = fetchedImages.bigImage || cachedBigImage || null;
-      const finalSmallImage =
-        fetchedImages.smallImage || cachedSmallImage || null;
+      const finalSmallImage = fetchedImages.smallImage || cachedSmallImage || null;
 
-      if (fetchedImages.bigImage)
-        this.cacheImage.set(bigImg, fetchedImages.bigImage);
-      if (fetchedImages.smallImage)
-        this.cacheImage.set(smallImg, fetchedImages.smallImage);
+      if (fetchedImages.bigImage) {
+        this.cacheImage.set(processedBigImg, fetchedImages.bigImage);
+      }
+      if (fetchedImages.smallImage) {
+        this.cacheImage.set(processedSmallImg, fetchedImages.smallImage);
+      }
 
       return { bigImage: finalBigImage, smallImage: finalSmallImage };
     } catch (error) {
-      console.warn(`Image processing error: ${error.message}`);
       return { bigImage: null, smallImage: null };
     }
   }
+
 
   replaceVariables(text, variables) {
     if (!text) return text;
@@ -2059,14 +2176,32 @@ class ModClient extends Client {
     });
   }
 
+
   SPT(text) {
     if (!text) return text || null;
 
     try {
       const { weather, sys, emoji, textFont, lib } = this;
+
+      const userTimezone = this.config?.OPTIONS?.tz || this.weather?.timezone || "Asia/Bangkok";
+
       const currentMoment = moment()
         .locale("th")
-        .tz(weather.timezone || "Asia/Bangkok");
+        .tz(userTimezone);
+
+      const day = currentMoment.date();
+      const daySuffix = (d) => {
+        if (d > 3 && d < 21) return "th";
+        switch (d % 10) {
+          case 1: return "st";
+          case 2: return "nd";
+          case 3: return "rd";
+          default: return "th";
+        }
+      };
+      const dayWithSuffix = `${day}${daySuffix(day)}`;
+
+      const currentMomentEN = currentMoment.clone().locale("en");
 
       const variables = {
         // Time
@@ -2074,6 +2209,15 @@ class ModClient extends Client {
         "hour:2": currentMoment.format("hh"),
         "min:1": currentMoment.format("mm"),
         "min:2": currentMoment.format("mm A"),
+        "day:en": dayWithSuffix,
+
+        // Time (EN)
+        "time:en:24": currentMomentEN.format("HH:mm"),
+        "time:en:12": currentMomentEN.format("hh:mm A"),
+        "hour:en": currentMomentEN.format("hh"),
+        "minute:en": currentMomentEN.format("mm"),
+        "ampm:en": currentMomentEN.format("A"),
+
         // Thai Date
         "th=date": currentMoment.format("D"),
         "th=week:1": currentMoment.format("ddd"),
@@ -2081,10 +2225,9 @@ class ModClient extends Client {
         "th=month:1": currentMoment.format("M"),
         "th=month:2": currentMoment.format("MMM"),
         "th=month:3": currentMoment.format("MMMM"),
-        "th=year:1": (parseInt(currentMoment.format("YYYY")) + 543)
-          .toString()
-          .slice(-2),
+        "th=year:1": (parseInt(currentMoment.format("YYYY")) + 543).toString().slice(-2),
         "th=year:2": (parseInt(currentMoment.format("YYYY")) + 543).toString(),
+
         // English Date
         "en=date": currentMoment.locale("en").format("Do"),
         "en=week:1": currentMoment.locale("en").format("ddd"),
@@ -2132,13 +2275,13 @@ class ModClient extends Client {
         pm10: weather.pm10 || 0,
 
         // System
-        ping: Math.round(this.ws?.ping || 0),
-        patch: lib.v.patch || "1.0.0",
-        "cpu:name": sys.cpuname || "CPU",
-        "cpu:cores": sys.cpucores || 1,
-        "cpu:speed": sys.cpuspeed || "0.0",
-        "cpu:usage": sys.cpu || 0,
-        "ram:usage": sys.ram || 0,
+        "ping": Math.round(this.ws?.ping || 0),
+        "patch": lib.v.patch || "1.0.0",
+        "cpu:name": sys.cpuname || sys.cpuName || "CPU",
+        "cpu:cores": sys.cpucores || sys.cpuCores || 1,
+        "cpu:speed": sys.cpuspeed || sys.cpuSpeedGHz || "0.0",
+        "cpu:usage": sys.cpu || sys.cpuUsage || 0,
+        "ram:usage": sys.ram || sys.ramUsage || 0,
         "uptime:days": Math.trunc((this.uptime || 0) / 86400000),
         "uptime:hours": Math.trunc(((this.uptime || 0) / 3600000) % 24),
         "uptime:minutes": Math.trunc(((this.uptime || 0) / 60000) % 60),
@@ -2186,7 +2329,7 @@ class ModClient extends Client {
         try {
           const processedContent = content.replace(
             /\{([^{}]+)\}/g,
-            (_, key) => variables[key] || key
+            (_, key) => (variables[key] !== undefined ? variables[key] : key)
           );
           return (
             textFont[`getFont${fontNum}`]?.(processedContent) ||
@@ -2203,7 +2346,7 @@ class ModClient extends Client {
             .replace(/\{NF(\d)\((.*?)\)\}/g, (_, num, content) => {
               return processFont(num, content);
             })
-            .replace(/\{([^{}]+)\}/g, (_, key) => variables[key] || key);
+            .replace(/\{([^{}]+)\}/g, (_, key) => (variables[key] !== undefined ? variables[key] : key));
         } catch (e) {
           return input;
         }

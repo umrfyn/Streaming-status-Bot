@@ -55,8 +55,7 @@ module.exports = {
       )
       .setImage(
         "https://i.postimg.cc/8CjqZqzt/rgb-black.gif"
-      )
-      .setTimestamp();
+      );
 
     await interaction.reply({
       embeds: [setupEmbed],

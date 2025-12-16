@@ -84,6 +84,9 @@ for (const file of commandFiles) {
   }
 }
 
+// Temporary configuration storage for manual setup
+const tempConfigs = new Map();
+
 function createBanner(text, type = "info") {
   const width = 60;
   const padding = Math.floor((width - text.length) / 2);
@@ -229,6 +232,19 @@ client.on("interactionCreate", async (interaction) => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
+  // Only handle streaming-related and manual config buttons
+  const handledButtons = [
+    "streaming", "start_streaming", "stop_streaming", "config_streaming",
+    "manual_config", "show_sample_config",
+    "config_options", "config_rpc", "config_inputs",
+    "rpc_basic", "rpc_content", "rpc_images", "rpc_buttons", "rpc_advanced",
+    "settings", "add_token", "view_tokens", "remove_token"
+  ];
+
+  if (!handledButtons.includes(interaction.customId)) {
+    return; // Let other handlers process this button
+  }
+
   if (interaction.customId === "streaming") {
     const streamingEmbed = new EmbedBuilder()
       .setColor(0x9b59b6)
@@ -302,11 +318,11 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (
-        !userConfig.config ||
-        !userConfig.setup ||
-        !userConfig.config.options ||
-        !userConfig.config.options["watch-url"] ||
-        userConfig.config.options["watch-url"].length === 0
+        !userConfig.OPTIONS ||
+        !userConfig.RPC ||
+        !userConfig.INPUTS ||
+        !userConfig.STATUS.data ||
+        userConfig.STATUS.data.length === 0
       ) {
         const invalidConfigEmbed = new EmbedBuilder()
           .setColor(0xe74c3c)
@@ -315,7 +331,7 @@ client.on("interactionCreate", async (interaction) => {
           .addFields({
             name: "Missing Elements",
             value:
-              "Your config must include at least one watch URL and proper setup parameters.",
+              "Your config must include all required sections: OPTIONS, STATUS, RPC, and INPUTS.",
           })
           .setFooter({
             text: "Please update your configuration",
@@ -517,7 +533,7 @@ client.on("interactionCreate", async (interaction) => {
         },
         {
           name: "2. Upload Config File",
-          value: "Use `/upload-config` to upload your .json file",
+          value: "Use `/upload-config` to upload your .yml file",
           inline: true,
         }
       );
@@ -538,6 +554,343 @@ client.on("interactionCreate", async (interaction) => {
       components: [configRow],
       ephemeral: true,
     });
+  }
+
+  // Manual Configuration Flow
+  if (interaction.customId === "manual_config") {
+    const configEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle("📝 Manual Configuration")
+      .setDescription("```Configure your bot step by step```\n\nChoose a section to configure:")
+      .addFields(
+        {
+          name: "OPTIONS",
+          value: "Location and Timezone settings",
+          inline: true,
+        },
+        {
+          name: "RPC",
+          value: "Rich Presence configuration",
+          inline: true,
+        },
+        {
+          name: "INPUTS",
+          value: "Activity type selection",
+          inline: true,
+        }
+      );
+
+    const configRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("config_options")
+        .setLabel("OPTIONS")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("config_rpc")
+        .setLabel("RPC")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("config_inputs")
+        .setLabel("INPUTS")
+        .setStyle(ButtonStyle.Primary),
+    );
+
+    const actionRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("config_preview")
+        .setLabel("Preview Config")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("config_save")
+        .setLabel("Save & Apply")
+        .setStyle(ButtonStyle.Success),
+    );
+
+    await interaction.reply({
+      embeds: [configEmbed],
+      components: [configRow, actionRow],
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.customId === "config_options") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_options")
+      .setTitle("OPTIONS Configuration");
+
+    const locationInput = new TextInputBuilder()
+      .setCustomId("option_location")
+      .setLabel("Location (City/Country)")
+      .setPlaceholder("Bangkok, New York, Tokyo, etc.")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setValue("Bangkok");
+
+    const timezoneInput = new TextInputBuilder()
+      .setCustomId("option_tz")
+      .setLabel("Timezone")
+      .setPlaceholder("Asia/Bangkok, America/New_York, etc.")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setValue("Asia/Bangkok");
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(locationInput),
+      new ActionRowBuilder().addComponents(timezoneInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.customId === "config_rpc") {
+    const rpcEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle("RPC Configuration")
+      .setDescription("```Configure your Rich Presence step by step```")
+      .addFields(
+        { name: "Basic", value: "Delay, URLs" },
+        { name: "Content", value: "Details, State, Name" },
+        { name: "Images", value: "Large/Small images and text" },
+        { name: "Buttons", value: "Up to 2 buttons" },
+        { name: "Advanced", value: "Timestamps" }
+      );
+
+    const rpcRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("rpc_basic")
+        .setLabel("Basic")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("rpc_content")
+        .setLabel("Content")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("rpc_images")
+        .setLabel("Images")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("rpc_buttons")
+        .setLabel("Buttons")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const rpcRow2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("rpc_advanced")
+        .setLabel("Advanced (Timestamps)")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("manual_config")
+        .setLabel("« Back")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await interaction.update({
+      embeds: [rpcEmbed],
+      components: [rpcRow, rpcRow2],
+    });
+  }
+
+  if (interaction.customId === "config_inputs") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_inputs")
+      .setTitle("INPUTS Configuration");
+
+    const activityInput = new TextInputBuilder()
+      .setCustomId("input_activity_type")
+      .setLabel("Activity Type")
+      .setPlaceholder("STREAMING, LISTENING, PLAYING, WATCHING, COMPETING")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setValue("STREAMING");
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(activityInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  // RPC Basic Configuration
+  if (interaction.customId === "rpc_basic") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_rpc_basic")
+      .setTitle("RPC - Basic Settings");
+
+    const delayInput = new TextInputBuilder()
+      .setCustomId("rpc_delay")
+      .setLabel("RPC Update Delay (milliseconds)")
+      .setPlaceholder("4000")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setValue("4000");
+
+    const twitchInput = new TextInputBuilder()
+      .setCustomId("rpc_twitch_url")
+      .setLabel("Twitch URL (or 'none')")
+      .setPlaceholder("https://www.twitch.tv/yourname")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const youtubeInput = new TextInputBuilder()
+      .setCustomId("rpc_youtube_url")
+      .setLabel("YouTube URL (or 'none')")
+      .setPlaceholder("https://www.youtube.com/@yourname")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(delayInput),
+      new ActionRowBuilder().addComponents(twitchInput),
+      new ActionRowBuilder().addComponents(youtubeInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  // RPC Content Configuration
+  if (interaction.customId === "rpc_content") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_rpc_content")
+      .setTitle("RPC - Content");
+
+    const detailsInput = new TextInputBuilder()
+      .setCustomId("rpc_details")
+      .setLabel("Details (one per line for rotation)")
+      .setPlaceholder("Line 1\nLine 2\nLine 3")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setValue("Your details here");
+
+    const stateInput = new TextInputBuilder()
+      .setCustomId("rpc_state")
+      .setLabel("State (one per line for rotation)")
+      .setPlaceholder("State 1\nState 2")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(detailsInput),
+      new ActionRowBuilder().addComponents(stateInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  // RPC Images Configuration
+  if (interaction.customId === "rpc_images") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_rpc_images")
+      .setTitle("RPC - Images");
+
+    const largeImageInput = new TextInputBuilder()
+      .setCustomId("rpc_large_image")
+      .setLabel("Large Image URL (or 'none')")
+      .setPlaceholder("https://example.com/image.png")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const largeTextInput = new TextInputBuilder()
+      .setCustomId("rpc_large_text")
+      .setLabel("Large Image Hover Text")
+      .setPlaceholder("Text shown on hover")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const smallImageInput = new TextInputBuilder()
+      .setCustomId("rpc_small_image")
+      .setLabel("Small Image URL (or 'none')")
+      .setPlaceholder("https://example.com/small.png")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const smallTextInput = new TextInputBuilder()
+      .setCustomId("rpc_small_text")
+      .setLabel("Small Image Hover Text")
+      .setPlaceholder("Text shown on hover")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(largeImageInput),
+      new ActionRowBuilder().addComponents(largeTextInput),
+      new ActionRowBuilder().addComponents(smallImageInput),
+      new ActionRowBuilder().addComponents(smallTextInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  // RPC Buttons Configuration
+  if (interaction.customId === "rpc_buttons") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_rpc_buttons")
+      .setTitle("RPC - Buttons");
+
+    const button1LabelInput = new TextInputBuilder()
+      .setCustomId("rpc_button1_label")
+      .setLabel("Button 1 Label")
+      .setPlaceholder("Visit Website")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const button1UrlInput = new TextInputBuilder()
+      .setCustomId("rpc_button1_url")
+      .setLabel("Button 1 URL")
+      .setPlaceholder("https://example.com")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const button2LabelInput = new TextInputBuilder()
+      .setCustomId("rpc_button2_label")
+      .setLabel("Button 2 Label (optional)")
+      .setPlaceholder("Join Discord")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const button2UrlInput = new TextInputBuilder()
+      .setCustomId("rpc_button2_url")
+      .setLabel("Button 2 URL (optional)")
+      .setPlaceholder("https://discord.gg/...")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(button1LabelInput),
+      new ActionRowBuilder().addComponents(button1UrlInput),
+      new ActionRowBuilder().addComponents(button2LabelInput),
+      new ActionRowBuilder().addComponents(button2UrlInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  // RPC Advanced (Timestamps) Configuration
+  if (interaction.customId === "rpc_advanced") {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_rpc_advanced")
+      .setTitle("RPC - Advanced (Timestamps)");
+
+    const startTimeInput = new TextInputBuilder()
+      .setCustomId("rpc_timestamp_start")
+      .setLabel("Start Timestamp (ISO format or 'none')")
+      .setPlaceholder("2025-01-01T00:00:00.000Z or 'none'")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const endTimeInput = new TextInputBuilder()
+      .setCustomId("rpc_timestamp_end")
+      .setLabel("End Timestamp (ISO format or 'none')")
+      .setPlaceholder("2030-12-31T23:59:59.000Z or 'none'")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(startTimeInput),
+      new ActionRowBuilder().addComponents(endTimeInput)
+    );
+
+    await interaction.showModal(modal);
   }
 
   if (interaction.customId === "settings") {
@@ -566,11 +919,9 @@ client.on("interactionCreate", async (interaction) => {
         .setDisabled(!hasTokens)
     );
 
-    // Only update if the message is already a settings panel, otherwise reply ephemeral
     let isMainMenu = false;
     if (interaction.isMessageComponent() && interaction.message && interaction.message.embeds && interaction.message.embeds.length > 0) {
       const embed = interaction.message.embeds[0];
-      // Check for main menu by description or fields
       if (
         (embed.description && embed.description.includes("ระบบออนเม็ดม่วง")) ||
         (embed.fields && embed.fields.some(f => f.name === "Streaming" && f.value.includes("Set your streaming status")))
@@ -749,7 +1100,7 @@ client.on("interactionCreate", async (interaction) => {
       if (formattedConfig.length > 1000) {
         configEmbed.addFields({
           name: "Configuration Format (Part 1)",
-          value: "```json\n" + formattedConfig.slice(0, 1000) + "\n...```",
+          value: "```yml\n" + formattedConfig.slice(0, 1000) + "\n...```",
         });
 
         const row = new ActionRowBuilder().addComponents(
@@ -1330,7 +1681,7 @@ client.on("interactionCreate", async (interaction) => {
           });
         } catch (e) {
         }
-      }, 2000); 
+      }, 2000);
     } catch (error) {
       console.error("Error in token validation:", error);
 
@@ -1383,9 +1734,8 @@ client.on("interactionCreate", async (interaction) => {
             },
             {
               name: "Status Count",
-              value: `${
-                configData.config?.["text-2"]?.length || 0
-              } status messages`,
+              value: `${configData.config?.["text-2"]?.length || 0
+                } status messages`,
               inline: true,
             },
             {
@@ -1701,6 +2051,229 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.editReply({
         content: "An error occurred while removing the token.",
         ephemeral: true,
+      });
+    }
+  }
+});
+
+// Modal Submission Handler
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+
+  const userId = interaction.user.id;
+
+  // Get or create temp config for this user
+  if (!tempConfigs.has(userId)) {
+    tempConfigs.set(userId, {
+      OPTIONS: {},
+      RPC: {},
+      INPUTS: {}
+    });
+  }
+
+  const userConfig = tempConfigs.get(userId);
+
+  // Handle OPTIONS modal
+  if (interaction.customId === "modal_options") {
+    const location = interaction.fields.getTextInputValue("option_location");
+    const tz = interaction.fields.getTextInputValue("option_tz");
+
+    userConfig.OPTIONS = { location, tz };
+
+    await interaction.reply({
+      content: `✅ **OPTIONS saved!**\n\`\`\`yml\nOPTIONS:\n  location: ${location}\n  tz: ${tz}\n\`\`\``,
+      ephemeral: true
+    });
+  }
+
+  // Handle STATUS modal
+  if (interaction.customId === "modal_status") {
+    const delay = parseInt(interaction.fields.getTextInputValue("status_delay"));
+    const dataText = interaction.fields.getTextInputValue("status_data");
+    const data = dataText.split('\n').map(line => line.trim()).filter(Boolean);
+
+    userConfig.STATUS = { delay, data };
+
+    await interaction.reply({
+      content: `✅ **STATUS saved!**\n\`\`\`yml\nSTATUS:\n  delay: ${delay}\n  data:\n${data.map(d => `    - "${d}"`).join('\n')}\n\`\`\``,
+      ephemeral: true
+    });
+  }
+
+  // Handle RPC Basic modal
+  if (interaction.customId === "modal_rpc_basic") {
+    const delay = parseInt(interaction.fields.getTextInputValue("rpc_delay"));
+    const twitchURL = interaction.fields.getTextInputValue("rpc_twitch_url") || "";
+    const youtubeURL = interaction.fields.getTextInputValue("rpc_youtube_url") || "";
+
+    if (!userConfig.RPC) userConfig.RPC = {};
+    userConfig.RPC.delay = delay;
+    if (twitchURL && twitchURL !== "none") userConfig.RPC.TwitchURL = twitchURL;
+    if (youtubeURL && youtubeURL !== "none") userConfig.RPC.YoutubeURL = youtubeURL;
+
+    await interaction.reply({
+      content: `✅ **RPC Basic settings saved!**`,
+      ephemeral: true
+    });
+  }
+
+  // Handle RPC Content modal
+  if (interaction.customId === "modal_rpc_content") {
+    const detailsText = interaction.fields.getTextInputValue("rpc_details");
+    const stateText = interaction.fields.getTextInputValue("rpc_state") || "";
+
+    const details = detailsText.split('\n').map(line => line.trim()).filter(Boolean);
+    const state = stateText.split('\n').map(line => line.trim()).filter(Boolean);
+
+    if (!userConfig.RPC) userConfig.RPC = {};
+    userConfig.RPC.details = details;
+    if (state.length > 0) userConfig.RPC.state = state;
+
+    await interaction.reply({
+      content: `✅ **RPC Content saved!**`,
+      ephemeral: true
+    });
+  }
+
+  // Handle RPC Images modal
+  if (interaction.customId === "modal_rpc_images") {
+    const largeImage = interaction.fields.getTextInputValue("rpc_large_image") || "none";
+    const largeText = interaction.fields.getTextInputValue("rpc_large_text") || "";
+    const smallImage = interaction.fields.getTextInputValue("rpc_small_image") || "none";
+    const smallText = interaction.fields.getTextInputValue("rpc_small_text") || "";
+
+    if (!userConfig.RPC) userConfig.RPC = {};
+    userConfig.RPC.assetsLargeImage = [largeImage];
+    if (largeText) userConfig.RPC.assetsLargeText = [largeText];
+    if (smallImage) userConfig.RPC.assetsSmallImage = [smallImage];
+    if (smallText) userConfig.RPC.assetsSmallText = [smallText];
+
+    await interaction.reply({
+      content: `✅ **RPC Images saved!**`,
+      ephemeral: true
+    });
+  }
+
+  // Handle RPC Buttons modal
+  if (interaction.customId === "modal_rpc_buttons") {
+    const button1Label = interaction.fields.getTextInputValue("rpc_button1_label") || "";
+    const button1Url = interaction.fields.getTextInputValue("rpc_button1_url") || "";
+    const button2Label = interaction.fields.getTextInputValue("rpc_button2_label") || "";
+    const button2Url = interaction.fields.getTextInputValue("rpc_button2_url") || "";
+
+    if (!userConfig.RPC) userConfig.RPC = {};
+
+    if (button1Label && button1Url) {
+      userConfig.RPC.buttonFirst = [{ label: button1Label, url: button1Url }];
+    }
+    if (button2Label && button2Url) {
+      userConfig.RPC.buttonSecond = [{ label: button2Label, url: button2Url }];
+    }
+
+    await interaction.reply({
+      content: `✅ **RPC Buttons saved!**`,
+      ephemeral: true
+    });
+  }
+
+  // Handle RPC Advanced (Timestamps) modal
+  if (interaction.customId === "modal_rpc_advanced") {
+    const startTime = interaction.fields.getTextInputValue("rpc_timestamp_start") || "";
+    const endTime = interaction.fields.getTextInputValue("rpc_timestamp_end") || "";
+
+    if (!userConfig.RPC) userConfig.RPC = {};
+
+    if ((startTime && startTime !== "none") || (endTime && endTime !== "none")) {
+      userConfig.RPC.timestamp = {};
+      if (startTime && startTime !== "none") userConfig.RPC.timestamp.start = startTime;
+      if (endTime && endTime !== "none") userConfig.RPC.timestamp.end = endTime;
+    }
+
+    await interaction.reply({
+      content: `✅ **RPC Timestamps saved!**`,
+      ephemeral: true
+    });
+  }
+
+  // Handle INPUTS modal
+  if (interaction.customId === "modal_inputs") {
+    const activityType = interaction.fields.getTextInputValue("input_activity_type").toUpperCase();
+
+    userConfig.INPUTS = {
+      activity: { type: activityType }
+    };
+
+    await interaction.reply({
+      content: `✅ **INPUTS saved!**\n\`\`\`yml\nINPUTS:\n  activity:\n    type: ${activityType}\n\`\`\``,
+      ephemeral: true
+    });
+  }
+});
+
+// Config Preview & Save Handler
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  // Only handle config preview/save buttons
+  if (interaction.customId !== "config_preview" && interaction.customId !== "config_save") {
+    return;
+  }
+
+  const userId = interaction.user.id;
+
+  // Preview Configuration
+  if (interaction.customId === "config_preview") {
+    const userConfig = tempConfigs.get(userId);
+
+    if (!userConfig) {
+      await interaction.reply({
+        content: "❌ No configuration found. Please configure at least one section first!",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const yaml = require('yaml');
+    const ymlContent = yaml.stringify(userConfig, { indent: 2 });
+
+    await interaction.reply({
+      content: `📄 **Your Current Configuration:**\n\`\`\`yml\n${ymlContent}\n\`\`\``,
+      ephemeral: true
+    });
+  }
+
+  // Save Configuration
+  if (interaction.customId === "config_save") {
+    const userConfig = tempConfigs.get(userId);
+
+    if (!userConfig || !userConfig.RPC || !userConfig.INPUTS) {
+      await interaction.reply({
+        content: "❌ Incomplete configuration! Please configure at least RPC and INPUTS sections.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    try {
+      const configManager = require("./database/userConfig");
+
+      // Save the configuration
+      configManager.saveUserConfig(userId, userConfig);
+
+      // Clear temp config
+      tempConfigs.delete(userId);
+
+      const yaml = require('yaml');
+      const ymlContent = yaml.stringify(userConfig, { indent: 2 });
+
+      await interaction.reply({
+        content: `✅ **Configuration saved successfully!**\n\nYou can now use \`/start_streaming\` to activate your RPC!\n\n\`\`\`yml\n${ymlContent.slice(0, 1000)}${ymlContent.length > 1000 ? '\n...' : ''}\n\`\`\``,
+        ephemeral: true
+      });
+    } catch (error) {
+      await interaction.reply({
+        content: `❌ Failed to save configuration: ${error.message}`,
+        ephemeral: true
       });
     }
   }

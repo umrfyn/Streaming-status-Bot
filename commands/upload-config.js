@@ -9,7 +9,7 @@ const {
 const configManager = require("../database/userConfig");
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const JsonValidator = require("../utils/jsonValidator");
+const YmlValidator = require("../utils/ymlValidator");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,7 +18,7 @@ module.exports = {
     .addAttachmentOption((option) =>
       option
         .setName("config")
-        .setDescription("Your config.json file")
+        .setDescription("Your config.yml file")
         .setRequired(true)
     ),
 
@@ -27,9 +27,9 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
       const file = interaction.options.getAttachment("config");
 
-      if (!file.name.endsWith(".json")) {
+      if (!file.name.endsWith(".yml") && !file.name.endsWith(".yaml")) {
         await interaction.editReply({
-          content: "❌ Please upload a .json file",
+          content: "❌ Please upload a .yml or .yaml file",
         });
         return;
       }
@@ -41,7 +41,7 @@ module.exports = {
 
       const configText = await response.text();
 
-      const validationResult = JsonValidator.validateConfig(configText);
+      const validationResult = YmlValidator.validateConfig(configText);
 
       if (!validationResult.isValid) {
         const errorEmbed = new EmbedBuilder()
@@ -52,9 +52,9 @@ module.exports = {
             name: "How to Fix",
             value:
               "Make sure your configuration file:\n" +
-              "• Is valid JSON format\n" +
-              "• Has all required sections\n" +
-              "• Contains valid values",
+              "• Is valid YAML format\n" +
+              "• Has all required sections (STATUS, RPC, INPUTS)\n" +
+              "• Contains valid values and delays ≥ 4000ms",
           });
 
         await interaction.editReply({
@@ -63,50 +63,32 @@ module.exports = {
         return;
       }
 
-      const splitResult = JsonValidator.splitLargeConfig(
-        validationResult.config
-      );
-      if (splitResult.error) {
-        await interaction.editReply({
-          content: "❌ Error processing configuration: " + splitResult.error,
-        });
-        return;
-      }
-
-      const config = splitResult.parts[0];
+      const config = validationResult.config;
       const success = configManager.setUserConfig(interaction.user.id, config);
 
       if (success) {
         const configEmbed = new EmbedBuilder()
           .setColor(0x3498db)
-          .setTitle("Configuration Uploaded Successfully");
-
-        if (splitResult.isSplit) {
-          configEmbed
-            .setDescription("Configuration has been optimized for performance.")
-            .addFields({
-              name: "Note",
-              value: "Some arrays were truncated to prevent memory issues.",
-            });
-        }
+          .setTitle("Configuration Uploaded Successfully")
+          .setDescription("Your YML configuration has been loaded successfully.");
 
         const buttonRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setURL(
-              config.config?.["button-1"]?.[0]?.url ||
-                "https://discord.gg/TSdpyMMfrU"
+              config.RPC?.buttonFirst?.[0]?.url ||
+              "https://server.0nyx.wtf/"
             )
             .setLabel(
-              config.config?.["button-1"]?.[0]?.name || "Miyako's server"
+              config.RPC?.buttonFirst?.[0]?.label || "Miyako's server"
             )
             .setStyle(ButtonStyle.Link),
           new ButtonBuilder()
             .setURL(
-              config.config?.["button-2"]?.[0]?.url ||
-                "https://github.com/4levy/Streaming-status"
+              config.RPC?.buttonSecond?.[0]?.url ||
+              "https://github.com/umrfyn/Streaming-status"
             )
             .setLabel(
-              config.config?.["button-2"]?.[0]?.name || "Stream status > Deobf"
+              config.RPC?.buttonSecond?.[0]?.label || "Stream status > Deobf"
             )
             .setStyle(ButtonStyle.Link)
         );
@@ -116,7 +98,7 @@ module.exports = {
             .setCustomId("next_image")
             .setLabel("Next Image")
             .setStyle(ButtonStyle.Primary)
-            .setDisabled(!(config.config?.bigimg?.length > 1))
+            .setDisabled(!(config.RPC?.assetsLargeImage?.length > 1))
         );
 
         await interaction.editReply({

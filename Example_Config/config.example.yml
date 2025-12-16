@@ -1,7 +1,7 @@
 OPTIONS:
   location: "Bangkok" # default
   tz: "Asia/Bangkok" # default
- 
+
 RPC:
   delay: 4000 # default (Minimum 4000)
   timestamp:
@@ -30,4 +30,4 @@ RPC:
  
 INPUTS:
   activity:
-    type: "LISTENING" # STREAMING
+    type: "LISTENING"

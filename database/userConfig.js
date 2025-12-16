@@ -31,43 +31,41 @@ class ConfigManager {
 
   getDefaultConfig() {
     return {
-      setup: {
-        city: "pattaya",
-        delay: 10,
+      OPTIONS: {
+        location: "Bangkok",
+        tz: "Asia/Bangkok",
       },
-      config: {
-        options: {
-          "watch-url": [
-            "https://www.twitch.tv/4levy_z1",
-            "https://www.youtube.com/watch?v=HuFZX0LB29g",
-          ],
-          timestamp: "{start}",
+      RPC: {
+        delay: 4000,
+        timestamp: {
+          start: "2025-01-01T00:00:00.000Z",
+          end: "2029-12-31T23:59:59.000Z",
         },
-        "text-1": [
-          "{NF3( 〈 {emoji:time} {hour:1} : {min:1} 〉 ⭒ 〈 📆 {th=date} / {en=month:3} / {en=year:2} 〉 )}",
-        ],
-        "text-2": [
-          "{NF3(Shorekeeper Loading..)}",
-          "☆ | 💙 ╺  Shorekeeper  ྀི𓈒",
-          "☆ | 💙⠀╺  Shorekeeper  ྀི𓈒",
-        ],
-        "text-3": ["☆★✮⋆☆★✮⋆ | ᶻ 𝘇 𐰁  "],
-        bigimg: [
-          "https://i.postimg.cc/hPvfwgm6/e82a9cc4dfb33f35ae9e80516029a4bd.jpg",
-        ],
-        smallimg: [],
-        "button-1": [
+        TwitchURL: "https://www.twitch.tv/example",
+        YoutubeURL: "https://www.youtube.com/@example",
+        details: ["Default Details - {time:en:12}"],
+        state: ["Default State"],
+        assetsLargeText: ["{ping} ms - {uptime:days}"],
+        assetsSmallText: ["Default Small Text"],
+        assetsLargeImage: ["https://i.pinimg.com/736x/2b/f3/54/2bf35424a5b4e1674321d24f49898e21.jpg"],
+        assetsSmallImage: ["none"],
+        buttonFirst: [
           {
-            name: "Miyako's server",
+            label: "Button 1",
             url: "https://discord.gg/TSdpyMMfrU",
           },
         ],
-        "button-2": [
+        buttonSecond: [
           {
-            name: "Stream status > Deobf",
+            label: "Button 2",
             url: "https://github.com/4levy/Streaming-status",
           },
         ],
+      },
+      INPUTS: {
+        activity: {
+          type: "LISTENING",
+        },
       },
       _isDefault: true,
     };
