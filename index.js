@@ -5,7 +5,12 @@ const {
   Collection,
   REST,
   Routes,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MediaGalleryBuilder,
+  SeparatorBuilder,
+  SectionBuilder,
+  MessageFlags,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -13,6 +18,8 @@ const {
   TextInputBuilder,
   TextInputStyle,
   StringSelectMenuBuilder,
+  FileUploadBuilder,
+  LabelBuilder,
 } = require("discord.js");
 require("dotenv").config();
 const fs = require("fs");
@@ -84,7 +91,7 @@ for (const file of commandFiles) {
   }
 }
 
-// Temporary configuration storage for manual setup
+
 const tempConfigs = new Map();
 
 function createBanner(text, type = "info") {
@@ -152,7 +159,7 @@ client.once("ready", async () => {
   client.user.setPresence({
     activities: [
       {
-        name: "Your RPC",
+        name: "fucked",
         type: 1,
         url: "https://www.twitch.tv/4levy_z1",
       },
@@ -232,7 +239,6 @@ client.on("interactionCreate", async (interaction) => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
-  // Only handle streaming-related and manual config buttons
   const handledButtons = [
     "streaming", "start_streaming", "stop_streaming", "config_streaming",
     "manual_config", "show_sample_config",
@@ -242,14 +248,10 @@ client.on("interactionCreate", async (interaction) => {
   ];
 
   if (!handledButtons.includes(interaction.customId)) {
-    return; // Let other handlers process this button
+    return; 
   }
 
   if (interaction.customId === "streaming") {
-    const streamingEmbed = new EmbedBuilder()
-      .setColor(0x9b59b6)
-      .setDescription("```Control your streaming status```");
-
     const isStreaming = await streamManager.isStreaming(interaction.user.id);
 
     const streamingRow = new ActionRowBuilder().addComponents(
@@ -269,10 +271,16 @@ client.on("interactionCreate", async (interaction) => {
         .setStyle(ButtonStyle.Primary)
     );
 
+    const streamingContainer = new ContainerBuilder()
+      .setAccentColor(0x9b59b6)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("```Control your streaming status```")
+      )
+      .addActionRowComponents(streamingRow);
+
     await interaction.reply({
-      embeds: [streamingEmbed],
-      components: [streamingRow],
-      ephemeral: true,
+      components: [streamingContainer],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   }
 
@@ -280,13 +288,15 @@ client.on("interactionCreate", async (interaction) => {
     try {
       await interaction.deferUpdate();
 
-      const processingEmbed = new EmbedBuilder()
-        .setColor(0xf1c40f)
-        .setDescription("```⏳ Starting streaming status...```");
+      const processingContainer = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("```⏳ Starting streaming status...```")
+        );
 
       await interaction.editReply({
-        embeds: [processingEmbed],
-        components: [],
+        components: [processingContainer],
+        flags: MessageFlags.IsComponentsV2,
       });
 
       const db = require("./database/db");
@@ -295,24 +305,25 @@ client.on("interactionCreate", async (interaction) => {
       const userConfig = configManager.getUserConfig(interaction.user.id);
 
       if (!userConfig) {
-        const configErrorEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("Configuration Missing")
-          .setDescription(
-            "⚠️ You need to set up your configuration before starting the stream."
+        const configErrorContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## Configuration Missing")
           )
-          .addFields({
-            name: "How to Configure",
-            value:
-              "Click the 'Config' button to set up your streaming configuration.",
-          })
-          .setFooter({
-            text: "Configuration is required before streaming can start",
-          });
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("⚠️ You need to set up your configuration before starting the stream.")
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("**How to Configure**\nClick the 'Config' button to set up your streaming configuration.")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("-# Configuration is required before streaming can start")
+          );
 
         await interaction.editReply({
-          embeds: [configErrorEmbed],
-          components: [interaction.message.components[0]],
+          components: [configErrorContainer, interaction.message.components[0]],
+          flags: MessageFlags.IsComponentsV2,
         });
         return;
       }
@@ -320,38 +331,41 @@ client.on("interactionCreate", async (interaction) => {
       if (
         !userConfig.OPTIONS ||
         !userConfig.RPC ||
-        !userConfig.INPUTS ||
-        !userConfig.STATUS.data ||
-        userConfig.STATUS.data.length === 0
+        !userConfig.INPUTS
       ) {
-        const invalidConfigEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("Invalid Configuration")
-          .setDescription("⚠️ Your configuration is incomplete or invalid.")
-          .addFields({
-            name: "Missing Elements",
-            value:
-              "Your config must include all required sections: OPTIONS, STATUS, RPC, and INPUTS.",
-          })
-          .setFooter({
-            text: "Please update your configuration",
-          });
+        const invalidConfigContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## Invalid Configuration")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("⚠️ Your configuration is incomplete or invalid.")
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("**Missing Elements**\nYour config must include all required sections: OPTIONS, STATUS, RPC, and INPUTS.")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("-# Please update your configuration")
+          );
 
         await interaction.editReply({
-          embeds: [invalidConfigEmbed],
+          components: [invalidConfigContainer],
+          flags: MessageFlags.IsComponentsV2,
         });
         return;
       }
 
       if (!userTokens || userTokens.length === 0) {
-        const tokenErrorEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setDescription(
-            "```⚠️ You need to add at least one token before starting the stream.```"
+        const tokenErrorContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("```⚠️ You need to add at least one token before starting the stream.```")
           );
 
         await interaction.editReply({
-          embeds: [tokenErrorEmbed],
+          components: [tokenErrorContainer],
+          flags: MessageFlags.IsComponentsV2,
         });
         return;
       }
@@ -382,75 +396,74 @@ client.on("interactionCreate", async (interaction) => {
             .setStyle(ButtonStyle.Primary)
         );
 
-        const startEmbed = new EmbedBuilder()
-          .setColor(0x2ecc71)
-          .setDescription("```Your streaming status is now active!```");
+        const startContainer = new ContainerBuilder()
+          .setAccentColor(0x2ecc71)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("```Your streaming status is now active!```")
+          );
 
-        const fields = [
-          { name: "Status", value: "Active", inline: true },
-          {
-            name: "Config",
-            value: userConfig._isDefault ? "Default (Template)" : "Custom",
-            inline: true,
-          },
-        ];
+        // Add status field
+        startContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**Status**: Active")
+        );
 
+        // Add config field
+        startContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**Config**: ${userConfig._isDefault ? "Default (Template)" : "Custom"}`)
+        );
+
+        // Add active tokens field
         if (
           result.successCount !== undefined &&
           result.totalCount !== undefined
         ) {
-          fields.push({
-            name: "Active Tokens",
-            value:
-              `${result.successCount}/${result.totalCount}` +
-              (result.failedCount > 0 ? ` (${result.failedCount} failed)` : ""),
-            inline: true,
-          });
+          const tokenText = `${result.successCount}/${result.totalCount}` +
+            (result.failedCount > 0 ? ` (${result.failedCount} failed)` : "");
+          startContainer.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Active Tokens**: ${tokenText}`)
+          );
 
           if (result.failedCount > 0) {
-            startEmbed.setFooter({
-              text: "Some tokens failed to connect. Check the console for details.",
-            });
+            startContainer.addTextDisplayComponents(
+              new TextDisplayBuilder().setContent("-# Some tokens failed to connect. Check the console for details.")
+            );
           }
         } else {
-          fields.push({
-            name: "Active Tokens",
-            value: `${userTokens.length}`,
-            inline: true,
-          });
+          startContainer.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Active Tokens**: ${userTokens.length}`)
+          );
         }
 
         if (userConfig._isDefault) {
-          fields.push({
-            name: "``⚠️`` Using Default Configuration",
-            value:
-              "```You're currently using the default template config. For best results, upload your own custom configuration.```",
-          });
+          startContainer.addSeparatorComponents(new SeparatorBuilder());
+          startContainer.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("⚠️ **Using Default Configuration**\n```You're currently using the default template config. For best results, upload your own custom configuration.```")
+          );
         }
 
-        startEmbed.addFields(fields).setTimestamp();
-
         await interaction.editReply({
-          embeds: [startEmbed],
-          components: [updatedRow],
+          components: [startContainer, updatedRow],
+          flags: MessageFlags.IsComponentsV2,
         });
 
         streamManager.startStatusCheck(interaction.user.id);
       } else {
-        const errorEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("Streaming Failed")
-          .setDescription("❌ Failed to start streaming with any tokens.")
-          .addFields({
-            name: "Reason",
-            value:
-              result.error ||
-              "Tokens may be invalid or expired. Check the console for more details.",
-          })
-          .setTimestamp();
+        const errorContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## Streaming Failed")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("❌ Failed to start streaming with any tokens.")
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Reason**\n${result.error || "Tokens may be invalid or expired. Check the console for more details."}`)
+          );
 
         await interaction.editReply({
-          embeds: [errorEmbed],
+          components: [errorContainer],
+          flags: MessageFlags.IsComponentsV2,
         });
       }
     } catch (error) {
@@ -490,23 +503,24 @@ client.on("interactionCreate", async (interaction) => {
           .setStyle(ButtonStyle.Primary)
       );
 
-      const stopEmbed = new EmbedBuilder()
-        .setColor(0xe74c3c)
-        .setDescription(
-          success
-            ? "```Your streaming status has been deactivated.```"
-            : "```No active streaming session found.```"
+      const stopContainer = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            success
+              ? "```Your streaming status has been deactivated.```"
+              : "```No active streaming session found.```"
+          )
         )
-        .addFields({
-          name: "Status",
-          value: success ? "Inactive" : "```Already Inactive```",
-          inline: true,
-        })
-        .setTimestamp();
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**Status**: ${success ? "Inactive" : "Already Inactive"}`
+          )
+        );
 
       await interaction.editReply({
-        embeds: [stopEmbed],
-        components: [updatedRow],
+        components: [stopContainer, updatedRow],
+        flags: MessageFlags.IsComponentsV2,
       });
 
       streamManager.stopStatusCheck(interaction.user.id);
@@ -520,64 +534,94 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId === "config_streaming") {
-    const configEmbed = new EmbedBuilder()
-      .setColor(0xf3eeee)
-      .setDescription(
-        "```Choose how you want to configure your streaming status```"
-      )
-      .addFields(
-        {
-          name: "1. Manual Configuration",
-          value: "Configure your settings step by step using Discord buttons",
-          inline: true,
-        },
-        {
-          name: "2. Upload Config File",
-          value: "Use `/upload-config` to upload your .yml file",
-          inline: true,
-        }
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      const configRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("manual_config")
+          .setLabel("Manual Configuration")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId("show_sample_config")
+          .setLabel("View Sample Config")
+          .setStyle(ButtonStyle.Secondary)
       );
 
-    const configRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("manual_config")
-        .setLabel("Manual Configuration")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("show_sample_config")
-        .setLabel("View Sample Config")
-        .setStyle(ButtonStyle.Secondary)
-    );
+      const configContainer = new ContainerBuilder()
+        .setAccentColor(0xf3eeee)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("```Choose how you want to configure your streaming status```")
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**1. Manual Configuration**\nConfigure your settings step by step using Discord buttons")
+        )
+        .addActionRowComponents(configRow);
 
-    await interaction.reply({
-      embeds: [configEmbed],
-      components: [configRow],
-      ephemeral: true,
-    });
+      await interaction.editReply({
+        components: [configContainer],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    } catch (error) {
+      console.error("Error in config_streaming:", error.message);
+    }
   }
 
-  // Manual Configuration Flow
+  if (interaction.customId === "upload_config_modal") {
+    console.log("upload_config_modal button clicked");
+    try {
+      const fileUpload = new FileUploadBuilder()
+        .setCustomId("config_file_upload")
+        .setRequired(true);
+
+      const modal = new ModalBuilder()
+        .setCustomId("upload_config_file_modal")
+        .setTitle("Upload Configuration")
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel("Configuration File")
+            .setDescription("Please upload your config.yml or config.yaml file")
+            .setFileUploadComponent(fileUpload)
+        );
+
+      await interaction.showModal(modal);
+      return;
+    } catch (error) {
+      console.error("Error showing upload config modal:", error);
+
+      const errorContainer = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("❌ Error showing upload modal: " + error.message)
+        );
+
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          components: [errorContainer],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+      }
+      return;
+    }
+  }
+
   if (interaction.customId === "manual_config") {
-    const configEmbed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle("📝 Manual Configuration")
-      .setDescription("```Configure your bot step by step```\n\nChoose a section to configure:")
-      .addFields(
-        {
-          name: "OPTIONS",
-          value: "Location and Timezone settings",
-          inline: true,
-        },
-        {
-          name: "RPC",
-          value: "Rich Presence configuration",
-          inline: true,
-        },
-        {
-          name: "INPUTS",
-          value: "Activity type selection",
-          inline: true,
-        }
+    const manualConfigContainer = new ContainerBuilder()
+      .setAccentColor(0x5865f2)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("📝 **Manual Configuration**")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("```Configure your bot step by step```\n\nChoose a section to configure:")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**OPTIONS** - Location and Timezone settings")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**RPC** - Rich Presence configuration")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**INPUTS** - Activity type selection")
       );
 
     const configRow = new ActionRowBuilder().addComponents(
@@ -607,9 +651,8 @@ client.on("interactionCreate", async (interaction) => {
     );
 
     await interaction.reply({
-      embeds: [configEmbed],
-      components: [configRow, actionRow],
-      ephemeral: true,
+      components: [manualConfigContainer, configRow, actionRow],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   }
 
@@ -643,16 +686,28 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId === "config_rpc") {
-    const rpcEmbed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle("RPC Configuration")
-      .setDescription("```Configure your Rich Presence step by step```")
-      .addFields(
-        { name: "Basic", value: "Delay, URLs" },
-        { name: "Content", value: "Details, State, Name" },
-        { name: "Images", value: "Large/Small images and text" },
-        { name: "Buttons", value: "Up to 2 buttons" },
-        { name: "Advanced", value: "Timestamps" }
+    const rpcContainer = new ContainerBuilder()
+      .setAccentColor(0x5865f2)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("## RPC Configuration")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("```Configure your Rich Presence step by step```")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**Basic** - Delay, URLs")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**Content** - Details, State, Name")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**Images** - Large/Small images and text")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**Buttons** - Up to 2 buttons")
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("**Advanced** - Timestamps")
       );
 
     const rpcRow = new ActionRowBuilder().addComponents(
@@ -686,8 +741,8 @@ client.on("interactionCreate", async (interaction) => {
     );
 
     await interaction.update({
-      embeds: [rpcEmbed],
-      components: [rpcRow, rpcRow2],
+      components: [rpcContainer, rpcRow, rpcRow2],
+      flags: MessageFlags.IsComponentsV2,
     });
   }
 
@@ -711,7 +766,6 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // RPC Basic Configuration
   if (interaction.customId === "rpc_basic") {
     const modal = new ModalBuilder()
       .setCustomId("modal_rpc_basic")
@@ -748,7 +802,6 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // RPC Content Configuration
   if (interaction.customId === "rpc_content") {
     const modal = new ModalBuilder()
       .setCustomId("modal_rpc_content")
@@ -777,7 +830,6 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // RPC Images Configuration
   if (interaction.customId === "rpc_images") {
     const modal = new ModalBuilder()
       .setCustomId("modal_rpc_images")
@@ -821,7 +873,6 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // RPC Buttons Configuration
   if (interaction.customId === "rpc_buttons") {
     const modal = new ModalBuilder()
       .setCustomId("modal_rpc_buttons")
@@ -865,7 +916,6 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // RPC Advanced (Timestamps) Configuration
   if (interaction.customId === "rpc_advanced") {
     const modal = new ModalBuilder()
       .setCustomId("modal_rpc_advanced")
@@ -898,10 +948,6 @@ client.on("interactionCreate", async (interaction) => {
     const userTokens = db.getUserTokens(interaction.user.id);
     const hasTokens = userTokens && userTokens.length > 0;
 
-    const settingsEmbed = new EmbedBuilder()
-      .setColor(0xffffff)
-      .setDescription("```Configure your status settings here```");
-
     const settingsRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("add_token")
@@ -919,27 +965,26 @@ client.on("interactionCreate", async (interaction) => {
         .setDisabled(!hasTokens)
     );
 
+    const settingsContainer = new ContainerBuilder()
+      .setAccentColor(0xffffff)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("```Configure your status settings here```")
+      )
+      .addActionRowComponents(settingsRow);
+
     let isMainMenu = false;
-    if (interaction.isMessageComponent() && interaction.message && interaction.message.embeds && interaction.message.embeds.length > 0) {
-      const embed = interaction.message.embeds[0];
-      if (
-        (embed.description && embed.description.includes("ระบบออนเม็ดม่วง")) ||
-        (embed.fields && embed.fields.some(f => f.name === "Streaming" && f.value.includes("Set your streaming status")))
-      ) {
-        isMainMenu = true;
-      }
+    if (interaction.isMessageComponent() && interaction.message && interaction.message.components && interaction.message.components.length > 0) {
+      isMainMenu = true;
     }
     if (interaction.isMessageComponent() && interaction.message && !isMainMenu) {
       await interaction.update({
-        embeds: [settingsEmbed],
-        components: [settingsRow],
-        ephemeral: true,
+        components: [settingsContainer],
+        flags: MessageFlags.IsComponentsV2,
       });
     } else {
       await interaction.reply({
-        embeds: [settingsEmbed],
-        components: [settingsRow],
-        ephemeral: true,
+        components: [settingsContainer],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
   }
@@ -974,14 +1019,16 @@ client.on("interactionCreate", async (interaction) => {
       const userData = db.data.users[interaction.user.id];
 
       if (!userData || userData.tokens.length === 0) {
-        const noTokensEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setDescription("```You don't have any saved tokens yet.```");
+        const noTokensContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("```You don't have any saved tokens yet.```")
+          );
 
         await interaction
           .reply({
-            embeds: [noTokensEmbed],
-            ephemeral: true,
+            components: [noTokensContainer],
+            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
           })
           .catch((error) => {
             console.error("Error replying to interaction:", error);
@@ -1000,16 +1047,22 @@ client.on("interactionCreate", async (interaction) => {
         })
         .join("\n");
 
-      const tokensEmbed = new EmbedBuilder()
-        .setColor(0xfcf7f7)
-        .setTitle(`${interaction.user.username} db`)
-        .setDescription(tokenList)
-        .setFooter({ text: `Total tokens: ${userData.tokens.length}` });
+      const tokensContainer = new ContainerBuilder()
+        .setAccentColor(0xfcf7f7)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`## ${interaction.user.username} db`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(tokenList)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`-# Total tokens: ${userData.tokens.length}`)
+        );
 
       await interaction
         .reply({
-          embeds: [tokensEmbed],
-          ephemeral: true,
+          components: [tokensContainer],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         })
         .catch((error) => {
           console.error("Error replying to interaction:", error);
@@ -1025,13 +1078,15 @@ client.on("interactionCreate", async (interaction) => {
       const tokens = db.getUserTokens(interaction.user.id);
 
       if (!tokens || tokens.length === 0) {
-        const noTokensEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setDescription("```You don't have any saved tokens to remove.```");
+        const noTokensContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("```You don't have any saved tokens to remove.```")
+          );
 
         await interaction.reply({
-          embeds: [noTokensEmbed],
-          ephemeral: true,
+          components: [noTokensContainer],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
         return;
       }
@@ -1042,22 +1097,26 @@ client.on("interactionCreate", async (interaction) => {
         value: token.value,
       }));
 
-      const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("select_token_to_remove")
-          .setPlaceholder("Select a token to remove")
-          .addOptions(options)
-      );
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId("select_token_to_remove")
+        .setPlaceholder("Select a token to remove")
+        .addOptions(options);
+
+      const selectRow = new ActionRowBuilder().addComponents(selectMenu);
+
+      const removeTokenContainer = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addActionRowComponents(selectRow);
 
       await interaction.reply({
-        components: [row],
-        ephemeral: true,
+        components: [removeTokenContainer],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     } catch (error) {
       console.error("Error in remove token button:", error);
       await interaction.reply({
         content: "An error occurred while preparing the token removal menu.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -1091,17 +1150,16 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      const configEmbed = new EmbedBuilder()
-        .setColor(0xf0e9e9)
-        .setDescription(
-          "```Copy this configuration and modify it for your needs:```"
+      const sampleConfigContainer = new ContainerBuilder()
+        .setAccentColor(0xf0e9e9)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("```Copy this configuration and modify it for your needs:```")
         );
 
       if (formattedConfig.length > 1000) {
-        configEmbed.addFields({
-          name: "Configuration Format (Part 1)",
-          value: "```yml\n" + formattedConfig.slice(0, 1000) + "\n...```",
-        });
+        sampleConfigContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**Configuration Format (Part 1)**\n```yml\n" + formattedConfig.slice(0, 1000) + "\n...```")
+        );
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -1111,19 +1169,17 @@ client.on("interactionCreate", async (interaction) => {
         );
 
         await interaction.reply({
-          embeds: [configEmbed],
-          components: [row],
-          ephemeral: true,
+          components: [sampleConfigContainer, row],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
       } else {
-        configEmbed.addFields({
-          name: "Configuration Format",
-          value: "```json\n" + formattedConfig + "```",
-        });
+        sampleConfigContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**Configuration Format**\n```json\n" + formattedConfig + "```")
+        );
 
         await interaction.reply({
-          embeds: [configEmbed],
-          ephemeral: true,
+          components: [sampleConfigContainer],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
       }
     } catch (error) {
@@ -1170,74 +1226,6 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
     }
-  }
-
-  if (interaction.customId === "manual_config") {
-    const configManager = require("./database/userConfig");
-    const userConfig = configManager.getUserConfig(interaction.user.id);
-
-    const configEmbed = new EmbedBuilder()
-      .setColor(0xf1eded)
-      .setDescription("```Select a section to configure```")
-      .addFields(
-        {
-          name: "1. Basic Settings",
-          value: "City and delay settings",
-          inline: true,
-        },
-        {
-          name: "2. Watch URLs",
-          value: "Twitch, YouTube, and other URLs",
-          inline: true,
-        },
-        {
-          name: "3. Status Messages",
-          value: "Customize your status text",
-          inline: true,
-        },
-        {
-          name: "4. Images",
-          value: "Add large and small images",
-          inline: true,
-        },
-        { name: "5. Buttons", value: "Configure button links", inline: true }
-      );
-
-    const configRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("config_basic")
-        .setLabel("Basic Settings")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("config_urls")
-        .setLabel("Watch URLs")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("config_messages")
-        .setLabel("Status Messages")
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    const configRow2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("config_images")
-        .setLabel("Images")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("config_buttons")
-        .setLabel("Buttons")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("save_config")
-        .setLabel("Save Configuration")
-        .setStyle(ButtonStyle.Success)
-    );
-
-    await interaction.reply({
-      embeds: [configEmbed],
-      components: [configRow, configRow2],
-      ephemeral: true,
-    });
   }
 
   if (interaction.customId === "config_basic") {
@@ -1435,7 +1423,6 @@ client.on("interactionCreate", async (interaction) => {
     const configManager = require("./database/userConfig");
     const userConfig = configManager.getUserConfig(interaction.user.id);
 
-    // Create a temporary config object to store the current configuration
     const tempConfig = {
       setup: {
         city: userConfig.setup?.city || "pattaya",
@@ -1456,50 +1443,36 @@ client.on("interactionCreate", async (interaction) => {
       },
     };
 
-    // Save the configuration
     const success = configManager.setUserConfig(
       interaction.user.id,
       tempConfig
     );
 
     if (success) {
-      const configEmbed = new EmbedBuilder()
-        .setColor(0xf1efef)
-        .setDescription(
-          "```Your streaming configuration has been saved successfully!```"
+      const saveConfigContainer = new ContainerBuilder()
+        .setAccentColor(0xf1efef)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("```Your streaming configuration has been saved successfully!```")
         )
-        .addFields(
-          { name: "City", value: tempConfig.setup.city, inline: true },
-          { name: "Delay", value: `${tempConfig.setup.delay}s`, inline: true },
-          {
-            name: "Watch URLs",
-            value:
-              tempConfig.config.options["watch-url"].length > 0
-                ? tempConfig.config.options["watch-url"].join("\n")
-                : "None set",
-            inline: false,
-          },
-          {
-            name: "Status Messages",
-            value:
-              tempConfig.config["text-2"].length > 0
-                ? `${tempConfig.config["text-2"].length} messages set`
-                : "None set",
-            inline: true,
-          },
-          {
-            name: "Images",
-            value:
-              tempConfig.config.bigimg.length > 0
-                ? `${tempConfig.config.bigimg.length} images set`
-                : "None set",
-            inline: true,
-          }
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**City**: ${tempConfig.setup.city}`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**Delay**: ${tempConfig.setup.delay}s`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**Watch URLs**\n${tempConfig.config.options["watch-url"].length > 0 ? tempConfig.config.options["watch-url"].join("\n") : "None set"}`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**Status Messages**: ${tempConfig.config["text-2"].length > 0 ? `${tempConfig.config["text-2"].length} messages set` : "None set"}`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**Images**: ${tempConfig.config.bigimg.length > 0 ? `${tempConfig.config.bigimg.length} images set` : "None set"}`)
         );
 
       await interaction.reply({
-        embeds: [configEmbed],
-        ephemeral: true,
+        components: [saveConfigContainer],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     } else {
       await interaction.reply({
@@ -1525,13 +1498,18 @@ client.on("interactionCreate", async (interaction) => {
     let currentIndex = images.findIndex((img) => img === currentImage);
     let nextIndex = (currentIndex + 1) % images.length;
 
-    const newEmbed = EmbedBuilder.from(currentEmbed).setImage(
-      images[nextIndex]
-    );
+    const currentComponents = interaction.message.components;
+    const newContainer = new ContainerBuilder()
+      .setAccentColor(0xfffdfd)
+      .addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems({
+          media: { url: images[nextIndex] }
+        })
+      );
 
     await interaction.update({
-      embeds: [newEmbed],
-      components: interaction.message.components,
+      components: [newContainer, ...currentComponents.slice(1)],
+      flags: MessageFlags.IsComponentsV2,
     });
   } catch (error) {
     console.error("Error updating image:", error);
@@ -1540,6 +1518,224 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
+
+  if (interaction.customId === "upload_config_file_modal") {
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      console.log("Modal submission data:");
+      console.log("- Has attachments:", !!interaction.attachments);
+      console.log("- Fields available:", interaction.fields?.fields?.size || 0);
+      let fileAttachment = null;
+
+      if (interaction.attachments && interaction.attachments.size > 0) {
+        fileAttachment = interaction.attachments.first();
+        console.log("Got file from interaction.attachments");
+      }
+
+      if (!fileAttachment && interaction.fields) {
+        try {
+          const fileField = interaction.fields.getField("config_file_upload");
+          console.log("File field keys:", fileField ? Object.keys(fileField) : "null");
+          console.log("Attachments:", fileField?.attachments);
+          console.log("Attachments type:", typeof fileField?.attachments);
+
+          if (fileField && fileField.attachments) {
+            if (typeof fileField.attachments.first === 'function') {
+              fileAttachment = fileField.attachments.first();
+              console.log("Got file from fileField.attachments.first()");
+            } else if (Array.isArray(fileField.attachments) && fileField.attachments.length > 0) {
+              fileAttachment = fileField.attachments[0];
+              console.log("Got file from fileField.attachments[0]");
+            } else if (fileField.attachments instanceof Map && fileField.attachments.size > 0) {
+              fileAttachment = fileField.attachments.values().next().value;
+              console.log("Got file from fileField.attachments Map");
+            } else if (typeof fileField.attachments === 'object') {
+              const values = Object.values(fileField.attachments);
+              if (values.length > 0) {
+                fileAttachment = values[0];
+                console.log("Got file from Object.values(fileField.attachments)[0]");
+              }
+            }
+          }
+
+          if (!fileAttachment && fileField) {
+            console.log("Full fileField stringified:", JSON.stringify(fileField, null, 2));
+          }
+        } catch (e) {
+          console.log("Could not get field:", e.message);
+        }
+      }
+
+      if (!fileAttachment && interaction.fields?.fields) {
+        for (const [key, field] of interaction.fields.fields) {
+          console.log(`Field ${key}:`, field);
+          if (field.attachment) {
+            fileAttachment = field.attachment;
+            console.log("Got file from field iteration");
+            break;
+          }
+        }
+      }
+
+      if (!fileAttachment) {
+        const errorContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("❌ No file was uploaded. Please try again.")
+          );
+
+        await interaction.editReply({
+          components: [errorContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+        return;
+      }
+
+      const filename = fileAttachment.filename || fileAttachment.name || "";
+      const fileUrl = fileAttachment.url || fileAttachment.attachment;
+
+      if (!filename.endsWith(".yml") && !filename.endsWith(".yaml")) {
+        const errorContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("❌ Please upload a .yml or .yaml file")
+          );
+
+        await interaction.editReply({
+          components: [errorContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+        return;
+      }
+
+      const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
+      const response = await fetch(fileUrl);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status}`);
+      }
+
+      const configText = await response.text();
+      const YmlValidator = require("./utils/ymlValidator");
+      const configManager = require("./database/userConfig");
+
+      const validationResult = YmlValidator.validateConfig(configText);
+
+      if (!validationResult.isValid) {
+        const errorContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## Configuration Error")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("```" + validationResult.error + "```")
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "**How to Fix**\n" +
+              "Make sure your configuration file:\n" +
+              "• Is valid YAML format\n" +
+              "• Has all required sections (STATUS, RPC, INPUTS)\n" +
+              "• Contains valid values and delays ≥ 4000ms"
+            )
+          );
+
+        await interaction.editReply({
+          components: [errorContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+        return;
+      }
+
+      const config = validationResult.config;
+      const success = configManager.setUserConfig(interaction.user.id, config);
+
+      if (success) {
+        const buttonRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setURL(
+              config.RPC?.buttonFirst?.[0]?.url || "https://server.0nyx.wtf/"
+            )
+            .setLabel(
+              config.RPC?.buttonFirst?.[0]?.label || "Miyako's server"
+            )
+            .setStyle(ButtonStyle.Link),
+          new ButtonBuilder()
+            .setURL(
+              config.RPC?.buttonSecond?.[0]?.url || "https://github.com/umrfyn/Streaming-status"
+            )
+            .setLabel(
+              config.RPC?.buttonSecond?.[0]?.label || "Stream status > Deobf"
+            )
+            .setStyle(ButtonStyle.Link)
+        );
+
+        const imageRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("next_image")
+            .setLabel("Next Image")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(!(config.RPC?.assetsLargeImage?.length > 1))
+        );
+
+        const successContainer = new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## Configuration Uploaded Successfully")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("Your YML configuration has been loaded successfully.")
+          );
+
+        const images = config.RPC?.assetsLargeImage || [];
+        if (images.length > 0) {
+          successContainer.addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems({
+              media: { url: images[0] }
+            })
+          );
+        }
+
+        successContainer.addActionRowComponents(buttonRow);
+        successContainer.addActionRowComponents(imageRow);
+
+        await interaction.editReply({
+          components: [successContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      } else {
+        const failContainer = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("❌ Failed to save configuration. Please try again.")
+          );
+
+        await interaction.editReply({
+          components: [failContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+    } catch (error) {
+      console.error("Error processing config file:", error);
+
+      const errorMessage = error.message.includes("heap")
+        ? "Configuration file is too large."
+        : "Error processing the configuration file: " + error.message;
+
+      const errorContainer = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("❌ " + errorMessage)
+        );
+
+      await interaction.editReply({
+        components: [errorContainer],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  }
 
   if (interaction.customId === "token_modal") {
     const tokenInput = interaction.fields
@@ -1559,13 +1755,15 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     try {
-      // Show loading embed
-      const loadingEmbed = new EmbedBuilder()
-        .setColor(0xf1c40f)
-        .setDescription("```⏳ Validating and adding your token(s)...```\nThis may take a few seconds.");
+      
+      const loadingContainer = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("```⏳ Validating and adding your token(s)...```\nThis may take a few seconds.")
+        );
       await interaction.reply({
-        embeds: [loadingEmbed],
-        ephemeral: true,
+        components: [loadingContainer],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
       const db = require("./database/db");
 
@@ -1604,60 +1802,51 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      const resultsEmbed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setDescription(`Processed ${tokens.length} token(s)`)
-        .addFields(
-          {
-            name: "``✅`` Successfully Added",
-            value: `${validCount} token(s)`,
-            inline: true,
-          },
-          {
-            name: "``❌`` Failed",
-            value: `${invalidCount} token(s)`,
-            inline: true,
-          }
+      const resultsContainer = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`Processed ${tokens.length} token(s)`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`✅ **Successfully Added**: ${validCount} token(s)`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`❌ **Failed**: ${invalidCount} token(s)`)
         );
 
       if (duplicateCount > 0) {
-        resultsEmbed.addFields({
-          name: "``⚠️`` Duplicates Skipped",
-          value: `${duplicateCount} token(s)`,
-          inline: true,
-        });
+        resultsContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`⚠️ **Duplicates Skipped**: ${duplicateCount} token(s)`)
+        );
       }
 
       if (validCount > 0) {
-        resultsEmbed.addFields({
-          name: "Next Steps",
-          value:
-            "```You can now use these tokens to start your streaming status.```",
-        });
+        resultsContainer.addSeparatorComponents(new SeparatorBuilder());
+        resultsContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**Next Steps**\n```You can now use these tokens to start your streaming status.```")
+        );
       }
 
       if (invalidCount > 0) {
-        resultsEmbed.addFields({
-          name: "Invalid Tokens",
-          value:
-            "Some tokens couldn't be validated. Make sure they are:\n" +
-            "• Valid user tokens (not bot tokens)\n" +
-            "• Not expired\n" +
-            "• Properly formatted",
-        });
+        resultsContainer.addSeparatorComponents(new SeparatorBuilder());
+        resultsContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**Invalid Tokens**\nSome tokens couldn't be validated. Make sure they are:\n• Valid user tokens (not bot tokens)\n• Not expired\n• Properly formatted")
+        );
       }
 
       await interaction.editReply({
-        embeds: [resultsEmbed],
-        ephemeral: true,
+        components: [resultsContainer],
+        flags: MessageFlags.IsComponentsV2,
       });
       setTimeout(async () => {
         try {
           const updatedTokens = db.getUserTokens(interaction.user.id);
           const hasTokensNow = updatedTokens && updatedTokens.length > 0;
-          const settingsEmbed = new EmbedBuilder()
-            .setColor(0xffffff)
-            .setDescription("```Configure your status settings here```");
+          const settingsContainer = new ContainerBuilder()
+            .setAccentColor(0xffffff)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent("```Configure your status settings here```")
+            );
           const settingsRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId("add_token")
@@ -1675,9 +1864,8 @@ client.on("interactionCreate", async (interaction) => {
               .setDisabled(!hasTokensNow)
           );
           await interaction.editReply({
-            embeds: [settingsEmbed],
-            components: [settingsRow],
-            ephemeral: true,
+            components: [settingsContainer, settingsRow],
+            flags: MessageFlags.IsComponentsV2,
           });
         } catch (e) {
         }
@@ -1717,47 +1905,36 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       if (success) {
-        const configEmbed = new EmbedBuilder()
-          .setColor(0x3498db)
-          .setTitle("Streaming Configuration Updated")
-          .setDescription("Your streaming configuration has been saved!")
-          .addFields(
-            {
-              name: "City",
-              value: configData.setup?.city || "Not set",
-              inline: true,
-            },
-            {
-              name: "Delay",
-              value: `${configData.setup?.delay || 0}s`,
-              inline: true,
-            },
-            {
-              name: "Status Count",
-              value: `${configData.config?.["text-2"]?.length || 0
-                } status messages`,
-              inline: true,
-            },
-            {
-              name: "Image Count",
-              value: `${configData.config?.bigimg?.length || 0} images`,
-              inline: true,
-            },
-            {
-              name: "Watch URLs",
-              value:
-                configData.config?.options?.["watch-url"]?.join("\n") ||
-                "None set",
-            }
+        const streamingConfigContainer = new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## Streaming Configuration Updated")
           )
-          .setFooter({
-            text: "Use the streaming panel to start/stop streaming",
-          })
-          .setTimestamp();
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("Your streaming configuration has been saved!")
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**City**: ${configData.setup?.city || "Not set"}`)
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Delay**: ${configData.setup?.delay || 0}s`)
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Status Count**: ${configData.config?.["text-2"]?.length || 0} status messages`)
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Image Count**: ${configData.config?.bigimg?.length || 0} images`)
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Watch URLs**\n${configData.config?.options?.["watch-url"]?.join("\n") || "None set"}`)
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("-# Use the streaming panel to start/stop streaming")
+          );
 
         await interaction.reply({
-          embeds: [configEmbed],
-          ephemeral: true,
+          components: [streamingConfigContainer],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
@@ -1786,12 +1963,10 @@ client.on("interactionCreate", async (interaction) => {
       const configManager = require("./database/userConfig");
       const userConfig = configManager.getUserConfig(interaction.user.id);
 
-      // Update the configuration
       if (!userConfig.setup) userConfig.setup = {};
       userConfig.setup.city = city;
       userConfig.setup.delay = delay;
 
-      // Save the configuration
       const success = configManager.setUserConfig(
         interaction.user.id,
         userConfig
@@ -1827,12 +2002,10 @@ client.on("interactionCreate", async (interaction) => {
       const configManager = require("./database/userConfig");
       const userConfig = configManager.getUserConfig(interaction.user.id);
 
-      // Update the configuration
       if (!userConfig.config) userConfig.config = {};
       if (!userConfig.config.options) userConfig.config.options = {};
       userConfig.config.options["watch-url"] = urls;
 
-      // Save the configuration
       const success = configManager.setUserConfig(
         interaction.user.id,
         userConfig
@@ -1878,13 +2051,11 @@ client.on("interactionCreate", async (interaction) => {
       const configManager = require("./database/userConfig");
       const userConfig = configManager.getUserConfig(interaction.user.id);
 
-      // Update the configuration
       if (!userConfig.config) userConfig.config = {};
       userConfig.config["text-1"] = text1;
       userConfig.config["text-2"] = text2;
       userConfig.config["text-3"] = text3;
 
-      // Save the configuration
       const success = configManager.setUserConfig(
         interaction.user.id,
         userConfig
@@ -1925,12 +2096,10 @@ client.on("interactionCreate", async (interaction) => {
       const configManager = require("./database/userConfig");
       const userConfig = configManager.getUserConfig(interaction.user.id);
 
-      // Update the configuration
       if (!userConfig.config) userConfig.config = {};
       userConfig.config.bigimg = bigimg;
       userConfig.config.smallimg = smallimg;
 
-      // Save the configuration
       const success = configManager.setUserConfig(
         interaction.user.id,
         userConfig
@@ -1973,10 +2142,10 @@ client.on("interactionCreate", async (interaction) => {
       const configManager = require("./database/userConfig");
       const userConfig = configManager.getUserConfig(interaction.user.id);
 
-      // Update the configuration
+      
       if (!userConfig.config) userConfig.config = {};
 
-      // Button 1
+     
       if (button1Name && button1Url) {
         userConfig.config["button-1"] = [
           {
@@ -1988,7 +2157,7 @@ client.on("interactionCreate", async (interaction) => {
         userConfig.config["button-1"] = [];
       }
 
-      // Button 2
+      
       if (button2Name && button2Url) {
         userConfig.config["button-2"] = [
           {
@@ -2000,7 +2169,7 @@ client.on("interactionCreate", async (interaction) => {
         userConfig.config["button-2"] = [];
       }
 
-      // Save the configuration
+      
       const success = configManager.setUserConfig(
         interaction.user.id,
         userConfig
@@ -2056,13 +2225,12 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// Modal Submission Handler
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
 
   const userId = interaction.user.id;
 
-  // Get or create temp config for this user
   if (!tempConfigs.has(userId)) {
     tempConfigs.set(userId, {
       OPTIONS: {},
@@ -2073,7 +2241,6 @@ client.on("interactionCreate", async (interaction) => {
 
   const userConfig = tempConfigs.get(userId);
 
-  // Handle OPTIONS modal
   if (interaction.customId === "modal_options") {
     const location = interaction.fields.getTextInputValue("option_location");
     const tz = interaction.fields.getTextInputValue("option_tz");
@@ -2086,7 +2253,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle STATUS modal
   if (interaction.customId === "modal_status") {
     const delay = parseInt(interaction.fields.getTextInputValue("status_delay"));
     const dataText = interaction.fields.getTextInputValue("status_data");
@@ -2100,7 +2266,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle RPC Basic modal
   if (interaction.customId === "modal_rpc_basic") {
     const delay = parseInt(interaction.fields.getTextInputValue("rpc_delay"));
     const twitchURL = interaction.fields.getTextInputValue("rpc_twitch_url") || "";
@@ -2117,7 +2282,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle RPC Content modal
   if (interaction.customId === "modal_rpc_content") {
     const detailsText = interaction.fields.getTextInputValue("rpc_details");
     const stateText = interaction.fields.getTextInputValue("rpc_state") || "";
@@ -2135,7 +2299,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle RPC Images modal
   if (interaction.customId === "modal_rpc_images") {
     const largeImage = interaction.fields.getTextInputValue("rpc_large_image") || "none";
     const largeText = interaction.fields.getTextInputValue("rpc_large_text") || "";
@@ -2154,7 +2317,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle RPC Buttons modal
   if (interaction.customId === "modal_rpc_buttons") {
     const button1Label = interaction.fields.getTextInputValue("rpc_button1_label") || "";
     const button1Url = interaction.fields.getTextInputValue("rpc_button1_url") || "";
@@ -2176,7 +2338,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle RPC Advanced (Timestamps) modal
   if (interaction.customId === "modal_rpc_advanced") {
     const startTime = interaction.fields.getTextInputValue("rpc_timestamp_start") || "";
     const endTime = interaction.fields.getTextInputValue("rpc_timestamp_end") || "";
@@ -2195,7 +2356,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Handle INPUTS modal
   if (interaction.customId === "modal_inputs") {
     const activityType = interaction.fields.getTextInputValue("input_activity_type").toUpperCase();
 
@@ -2210,18 +2370,15 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// Config Preview & Save Handler
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
-  // Only handle config preview/save buttons
   if (interaction.customId !== "config_preview" && interaction.customId !== "config_save") {
     return;
   }
 
   const userId = interaction.user.id;
 
-  // Preview Configuration
   if (interaction.customId === "config_preview") {
     const userConfig = tempConfigs.get(userId);
 
@@ -2242,7 +2399,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Save Configuration
   if (interaction.customId === "config_save") {
     const userConfig = tempConfigs.get(userId);
 
@@ -2257,10 +2413,8 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const configManager = require("./database/userConfig");
 
-      // Save the configuration
       configManager.saveUserConfig(userId, userConfig);
 
-      // Clear temp config
       tempConfigs.delete(userId);
 
       const yaml = require('yaml');

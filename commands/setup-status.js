@@ -4,7 +4,9 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
+  ContainerBuilder,
+  MediaGalleryBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 module.exports = {
@@ -17,7 +19,7 @@ module.exports = {
     if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
         content: "You do not have permission to use this command!",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -35,31 +37,21 @@ module.exports = {
         .setURL('https://youtu.be/ulUS2mXUqKQ')
         .setEmoji('<:youtube:1153998429274517524>')
         .setStyle(ButtonStyle.Link)
-      
     );
 
-    const setupEmbed = new EmbedBuilder()
-      .setColor(0xfffdfd)
-      .setDescription("```ระบบออนเม็ดม่วง ( BETA )```")
-      .addFields(
-        {
-          name: "Streaming",
-          value: "```Set your streaming status```",
-          inline: true,
-        },
-        {
-          name: "Settings",
-          value: "```กำหนดค่าการตั้งค่าสถานะของคุณ```",
-          inline: true,
-        }
+    // Create container with image and buttons inside using Components v2
+    const container = new ContainerBuilder()
+      .setAccentColor(0xfffdfd)
+      .addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems({
+          media: { url: "https://i.postimg.cc/8CjqZqzt/rgb-black.gif" }
+        })
       )
-      .setImage(
-        "https://i.postimg.cc/8CjqZqzt/rgb-black.gif"
-      );
+      .addActionRowComponents(row);
 
     await interaction.reply({
-      embeds: [setupEmbed],
-      components: [row],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
   },
 };

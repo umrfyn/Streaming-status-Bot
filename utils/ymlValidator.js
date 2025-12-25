@@ -5,7 +5,6 @@ class YmlValidator {
         try {
             const config = yaml.parse(ymlString);
 
-            // Validate OPTIONS section
             if (!config.OPTIONS) {
                 throw new Error("Missing required 'OPTIONS' section");
             }
@@ -18,7 +17,6 @@ class YmlValidator {
                 throw new Error("OPTIONS.tz must be a non-empty string");
             }
 
-            // Validate RPC section
             if (!config.RPC) {
                 throw new Error("Missing required 'RPC' section");
             }
@@ -30,14 +28,11 @@ class YmlValidator {
             if (config.RPC.delay < 4000) {
                 throw new Error("RPC.delay must be at least 4000ms");
             }
-
-            // Validate timestamp if present
             if (config.RPC.timestamp) {
                 if (!config.RPC.timestamp.start || !config.RPC.timestamp.end) {
                     throw new Error("RPC.timestamp must have both 'start' and 'end' fields");
                 }
 
-                // Validate ISO 8601 format
                 const startDate = new Date(config.RPC.timestamp.start);
                 const endDate = new Date(config.RPC.timestamp.end);
 
@@ -49,8 +44,6 @@ class YmlValidator {
                     throw new Error("RPC.timestamp.end must be a valid ISO 8601 date");
                 }
             }
-
-            // Validate required RPC arrays
             const requiredRPCArrays = ['details', 'state', 'assetsLargeText', 'assetsSmallText', 'assetsLargeImage', 'assetsSmallImage'];
 
             for (const field of requiredRPCArrays) {
@@ -59,7 +52,6 @@ class YmlValidator {
                 }
             }
 
-            // Validate buttons
             if (config.RPC.buttonFirst && Array.isArray(config.RPC.buttonFirst)) {
                 config.RPC.buttonFirst.forEach((button, index) => {
                     if (!button.label || !button.url) {
