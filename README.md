@@ -3,7 +3,7 @@ Please leave a star for upcoming update!!
 **Before starting the bot, please run `npm install` to install all necessary dependencies.**  
 If you encounter any issues, feel free to reach out via our [Discord server](https://server.0nyx.wtf/).  
 
-Youtube : https://youtu.be/ulUS2mXUqKQ
+Youtube : https://youtu.be/QMVwxJDnr9E?si=oDFyAazNWnwHBgaK
 
 🔹 **This project is released under the MIT License.**  
 
